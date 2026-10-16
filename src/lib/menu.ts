@@ -24,10 +24,19 @@ export async function getMenu(): Promise<Menu> {
   }
 }
 
-export function findVariant(menu: Menu, variantId: string): { item: MenuItem; variant: MenuVariant } | null {
+export interface FoundVariant {
+  item: MenuItem;
+  variant: MenuVariant;
+  customizable: boolean;
+}
+
+export function findVariant(menu: Menu, variantId: string): FoundVariant | null {
   for (const item of menu.items) {
     const variant = item.variants.find((v) => v.id === variantId);
-    if (variant) return { item, variant };
+    if (variant) {
+      const customizable = menu.categories.find((c) => c.id === item.categoryId)?.customizable ?? false;
+      return { item, variant, customizable };
+    }
   }
   return null;
 }

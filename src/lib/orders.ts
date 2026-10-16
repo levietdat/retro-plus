@@ -1,10 +1,31 @@
 import "server-only";
-import { ACTIVE_ORDER_STATUSES, ENV, LIMITS, MESSAGES, OrderStatus, ServeMode, STORAGE } from "./constants";
+import {
+  ACTIVE_ORDER_STATUSES,
+  ENV,
+  LIMITS,
+  MESSAGES,
+  OrderStatus,
+  POPULAR,
+  ServeMode,
+  STORAGE,
+  WAIT,
+} from "./constants";
 import { dayKey } from "./format";
 import { pushOrderToKiotViet, isKiotVietConfigured } from "./kiotviet";
 import { findVariant, getMenu } from "./menu";
+import { InvalidOptionsError, normalizeOptions } from "./options";
+import { getSettings } from "./settings";
 import { readDay, updateDay } from "./storage";
-import type { CreateOrderInput, Order, OrderLine, OrderStats, PublicOrder } from "./types";
+import type {
+  AdminOrderPatch,
+  CreateOrderInput,
+  DrinkOptions,
+  Menu,
+  Order,
+  OrderLine,
+  OrderStats,
+  PublicOrder,
+} from "./types";
 
 export class OrderError extends Error {
   constructor(message: string, public status = 400) {
@@ -23,20 +44,36 @@ export function cleanQty(v: unknown): number {
   return qty;
 }
 
+export function cleanOptions(input: Partial<DrinkOptions> | undefined, customizable: boolean): DrinkOptions | undefined {
+  try {
+    return normalizeOptions(input, customizable);
+  } catch (err) {
+    if (err instanceof InvalidOptionsError) throw new OrderError(MESSAGES.invalidOptions);
+    throw err;
+  }
+}
+
+/** Throws when the shop is paused or a variant is sold out. */
+export async function assertCanOrder(variantIds: string[]): Promise<void> {
+  const settings = await getSettings();
+  if (!settings.acceptingOrders) throw new OrderError(MESSAGES.shopPaused, 409);
+  if (variantIds.some((id) => settings.soldOut.includes(id))) throw new OrderError(MESSAGES.soldOut, 409);
+}
+
 function formatCode(seq: number): string {
   return STORAGE.orderCodePrefix + String(seq).padStart(STORAGE.orderCodeDigits, "0");
 }
 
 /** Validates input and prices every line from the server-side menu. */
-async function buildLines(input: CreateOrderInput): Promise<OrderLine[]> {
+async function buildLines(input: CreateOrderInput, menu: Menu): Promise<OrderLine[]> {
   if (!Array.isArray(input.lines) || input.lines.length === 0 || input.lines.length > LIMITS.linesPerOrder) {
     throw new OrderError(MESSAGES.invalidOrder);
   }
-  const menu = await getMenu();
   return input.lines.map((l) => {
     const found = findVariant(menu, String(l.variantId));
     if (!found) throw new OrderError(MESSAGES.itemUnavailable);
     const note = clean(l.note, LIMITS.lineNote);
+    const options = cleanOptions(l.options, found.customizable);
     return {
       variantId: found.variant.id,
       name: found.item.name,
@@ -44,6 +81,7 @@ async function buildLines(input: CreateOrderInput): Promise<OrderLine[]> {
       price: found.variant.price,
       qty: cleanQty(l.qty),
       ...(note ? { note } : {}),
+      ...(options ? { options } : {}),
       kiotvietProductId: found.variant.kiotvietProductId,
     };
   });
@@ -76,6 +114,7 @@ export async function insertOrder(base: NewOrderBase, lines: OrderLine[]): Promi
       updatedAt: now,
       kiotvietOrderCode: null,
       kiotvietError: null,
+      paid: false,
     };
     return { doc: { ...doc, seq, orders: [...doc.orders, created] }, result: created };
   });
@@ -99,14 +138,31 @@ export async function createOrder(input: CreateOrderInput): Promise<PublicOrder>
   if (!isServeMode(input.mode)) throw new OrderError(MESSAGES.invalidOrder);
   const table = input.mode === ServeMode.Table ? clean(input.table, LIMITS.table) : "";
   if (input.mode === ServeMode.Table && !table) throw new OrderError(MESSAGES.needTable);
-  const lines = await buildLines(input);
+  const lines = await buildLines(input, await getMenu());
+  await assertCanOrder(lines.map((l) => l.variantId));
   return insertOrder({ customer, mode: input.mode, table, note: clean(input.note, LIMITS.note) }, lines);
 }
 
+/* ---------- Wait estimate ---------- */
+function waitConfig() {
+  const perCup = Number(process.env[ENV.prepMinutesPerCup]) || WAIT.defaultMinutesPerCup;
+  const baristas = Math.max(1, Number(process.env[ENV.baristas]) || WAIT.defaultBaristas);
+  return { perCup, baristas };
+}
+
+const cupsOf = (o: Order) => o.lines.reduce((s, l) => s + l.qty, 0);
+
+function minutesFor(cups: number): number {
+  const { perCup, baristas } = waitConfig();
+  return cups > 0 ? Math.max(1, Math.ceil((cups * perCup) / baristas)) : 0;
+}
+
 function toPublic(order: Order, sameDay: Order[]): PublicOrder {
-  const ahead = sameDay.filter(
-    (o) => ACTIVE_ORDER_STATUSES.includes(o.status) && o.createdAt < order.createdAt && o.id !== order.id,
-  ).length;
+  const active = sameDay.filter((o) => ACTIVE_ORDER_STATUSES.includes(o.status));
+  const before = active.filter((o) => o.createdAt < order.createdAt && o.id !== order.id);
+  const waitMinutes = ACTIVE_ORDER_STATUSES.includes(order.status)
+    ? minutesFor(before.reduce((s, o) => s + cupsOf(o), 0) + cupsOf(order))
+    : 0;
   return {
     code: order.code,
     customer: order.customer,
@@ -116,7 +172,9 @@ function toPublic(order: Order, sameDay: Order[]): PublicOrder {
     total: order.total,
     status: order.status,
     createdAt: order.createdAt,
-    ahead,
+    ahead: before.length,
+    waitMinutes,
+    paid: Boolean(order.paid),
     ...(order.groupCode ? { groupCode: order.groupCode } : {}),
   };
 }
@@ -126,11 +184,15 @@ export async function getTodayOrders(): Promise<Order[]> {
 }
 
 export async function getStats(): Promise<OrderStats> {
-  const orders = await getTodayOrders();
+  const [orders, settings] = await Promise.all([getTodayOrders(), getSettings()]);
+  const active = orders.filter((o) => ACTIVE_ORDER_STATUSES.includes(o.status));
   return {
-    waiting: orders.filter((o) => ACTIVE_ORDER_STATUSES.includes(o.status)).length,
+    waiting: active.length,
     making: orders.filter((o) => o.status === OrderStatus.Making).length,
     today: orders.filter((o) => o.status !== OrderStatus.Cancelled).length,
+    waitMinutes: minutesFor(active.reduce((s, o) => s + cupsOf(o), 0)),
+    acceptingOrders: settings.acceptingOrders,
+    soldOut: settings.soldOut,
   };
 }
 
@@ -149,7 +211,7 @@ function dayFromId(id: string): string {
 
 export async function patchOrder(
   id: string,
-  patch: Partial<Pick<Order, "status" | "kiotvietOrderCode" | "kiotvietError">>,
+  patch: AdminOrderPatch & Partial<Pick<Order, "kiotvietOrderCode" | "kiotvietError">>,
 ): Promise<Order> {
   return updateDay(dayFromId(id), (doc) => {
     const idx = doc.orders.findIndex((o) => o.id === id);
@@ -163,4 +225,28 @@ export async function patchOrder(
 
 export async function getOrdersForDay(day: string): Promise<Order[]> {
   return (await readDay(day)).orders;
+}
+
+/* ---------- Best sellers ---------- */
+let popularCache: { at: number; ids: string[] } | null = null;
+
+/** Menu item ids ordered most in the last few days (by cups). Empty until there is enough data. */
+export async function getPopularItemIds(menu: Menu): Promise<string[]> {
+  if (popularCache && Date.now() - popularCache.at < POPULAR.cacheMs) return popularCache.ids;
+  const days = Array.from({ length: POPULAR.days }, (_, i) => dayKey(Date.now() - i * 86_400_000));
+  const docs = await Promise.all(days.map((d) => readDay(d).catch(() => null)));
+  const orders = docs.flatMap((d) => d?.orders ?? []).filter((o) => o.status !== OrderStatus.Cancelled);
+  const cups = new Map<string, number>();
+  for (const o of orders) {
+    for (const l of o.lines) {
+      const itemId = findVariant(menu, l.variantId)?.item.id;
+      if (itemId) cups.set(itemId, (cups.get(itemId) ?? 0) + l.qty);
+    }
+  }
+  const ids =
+    orders.length >= POPULAR.minOrders
+      ? [...cups.entries()].sort((a, b) => b[1] - a[1]).slice(0, POPULAR.limit).map(([id]) => id)
+      : [];
+  popularCache = { at: Date.now(), ids };
+  return ids;
 }

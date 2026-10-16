@@ -18,14 +18,14 @@ import { formatMoney, formatTime } from "@/lib/format";
 import type {
   AddGroupItemInput,
   Menu,
-  MenuItem,
-  MenuVariant,
   PublicGroup,
   PublicGroupItem,
   PublicOrder,
   UpdateGroupInput,
   UpdateGroupItemInput,
 } from "@/lib/types";
+import type { ItemChoice } from "./ItemSheet";
+import { LineLabel } from "./LineLabel";
 import { MenuBrowser } from "./MenuBrowser";
 
 interface MemberBlock {
@@ -65,10 +65,7 @@ function ItemRow({ item, editable, onQty, onNote, onRemove }: {
   return (
     <div className="gline">
       <div className="line">
-        <span>
-          {item.name}
-          {item.size && <span className="hint"> ({item.size})</span>}
-        </span>
+        <LineLabel name={item.name} size={item.size} options={item.options} />
         {editable ? (
           <span className="step">
             <button aria-label="Bớt" onClick={() => (item.qty <= 1 ? onRemove() : onQty(item.qty - 1))}>−</button>
@@ -139,7 +136,7 @@ function ShareBox({ code }: { code: string }) {
 }
 
 /* ---------- Page ---------- */
-export function GroupApp({ code, menu }: { code: string; menu: Menu }) {
+export function GroupApp({ code, menu, popularIds }: { code: string; menu: Menu; popularIds: string[] }) {
   const router = useRouter();
   const [group, setGroup] = useState<PublicGroup | null>(null);
   const [missing, setMissing] = useState(false);
@@ -189,7 +186,7 @@ export function GroupApp({ code, menu }: { code: string; menu: Menu }) {
     }
   }
 
-  async function add(item: MenuItem, variant: MenuVariant) {
+  async function add({ variant, options, note: lineNote, qty }: ItemChoice) {
     if (!myName.trim()) {
       setError(MESSAGES.needMemberName);
       setOpen(true);
@@ -197,7 +194,14 @@ export function GroupApp({ code, menu }: { code: string; menu: Menu }) {
       return;
     }
     saveCustomer({ customer: myName.trim() });
-    const body: AddGroupItemInput = { memberId: getMemberId(), member: myName.trim(), variantId: variant.id, qty: 1 };
+    const body: AddGroupItemInput = {
+      memberId: getMemberId(),
+      member: myName.trim(),
+      variantId: variant.id,
+      qty,
+      note: lineNote,
+      options,
+    };
     const g = await call<PublicGroup>(API.groupItems(code), HttpMethod.Post, body);
     if (g) apply(g);
   }
@@ -240,8 +244,10 @@ export function GroupApp({ code, menu }: { code: string; menu: Menu }) {
   const isOpen = group.status === GroupStatus.Open;
   const blocks = groupByMember(group.items);
   const cups = group.items.reduce((s, i) => s + i.qty, 0);
-  const mine = (variantId: string) =>
-    group.items.filter((i) => i.mine && i.variantId === variantId).reduce((s, i) => s + i.qty, 0);
+  const mineForItem = (itemId: string) => {
+    const variantIds = new Set(menu.items.find((m) => m.id === itemId)?.variants.map((v) => v.id) ?? []);
+    return group.items.filter((i) => i.mine && variantIds.has(i.variantId)).reduce((s, i) => s + i.qty, 0);
+  };
   const where = group.mode === ServeMode.Table ? (group.table ? `Bàn ${group.table}` : "Chưa có số bàn") : SERVE_MODE_LABEL[ServeMode.Takeaway];
 
   return (
@@ -264,7 +270,7 @@ export function GroupApp({ code, menu }: { code: string; menu: Menu }) {
 
       {isOpen && (
         <div className="layout">
-          <MenuBrowser menu={menu} qtyFor={mine} onAdd={add} />
+          <MenuBrowser menu={menu} popularIds={popularIds} qtyForItem={mineForItem} onAdd={add} />
 
           <aside className={`ticket${open ? " open" : ""}`} aria-label="Món của nhóm">
             <div className="ticket-head">

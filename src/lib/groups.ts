@@ -2,7 +2,8 @@ import "server-only";
 import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { GROUP, GroupStatus, LIMITS, MESSAGES, ServeMode } from "./constants";
 import { findVariant, getMenu } from "./menu";
-import { clean, cleanQty, insertOrder, isServeMode, OrderError } from "./orders";
+import { assertCanOrder, clean, cleanOptions, cleanQty, insertOrder, isServeMode, OrderError } from "./orders";
+import { optionsKey } from "./options";
 import { readDoc, updateDoc } from "./storage";
 import type {
   AddGroupItemInput,
@@ -122,6 +123,8 @@ export async function addGroupItem(code: string, input: AddGroupItemInput, calle
   if (!found) throw new OrderError(MESSAGES.itemUnavailable);
   const qty = cleanQty(input.qty ?? 1);
   const note = clean(input.note, LIMITS.lineNote);
+  const options = cleanOptions(input.options, found.customizable);
+  await assertCanOrder([found.variant.id]);
   const now = Date.now();
 
   return updateDoc<GroupDoc, PublicGroup>(key(normalizeGroupCode(code)), (raw) => {
@@ -129,8 +132,14 @@ export async function addGroupItem(code: string, input: AddGroupItemInput, calle
     if (doc.items.length >= GROUP.maxItems) throw new OrderError(MESSAGES.groupFull);
     const members = new Set(doc.items.map((i) => i.memberId));
     if (!members.has(memberId) && members.size >= GROUP.maxMembers) throw new OrderError(MESSAGES.groupTooManyMembers);
-    // Same drink, same note, same person: bump the quantity instead of adding a row.
-    const same = doc.items.find((i) => i.memberId === memberId && i.variantId === found.variant.id && i.note === note);
+    // Same drink, same options and note, same person: bump the quantity instead of adding a row.
+    const same = doc.items.find(
+      (i) =>
+        i.memberId === memberId &&
+        i.variantId === found.variant.id &&
+        i.note === note &&
+        optionsKey(i.options) === optionsKey(options),
+    );
     const items = same
       ? doc.items.map((i) => (i === same ? { ...i, member, qty: Math.min(i.qty + qty, LIMITS.qtyPerLine) } : i))
       : [
@@ -143,6 +152,7 @@ export async function addGroupItem(code: string, input: AddGroupItemInput, calle
             size: found.variant.label,
             price: found.variant.price,
             qty, note, addedAt: now,
+            ...(options ? { options } : {}),
             kiotvietProductId: found.variant.kiotvietProductId,
           } satisfies GroupItem,
         ];
@@ -201,6 +211,8 @@ export async function updateGroup(code: string, input: UpdateGroupInput, caller:
  */
 export async function submitGroup(code: string, caller: Caller): Promise<PublicOrder> {
   const k = key(normalizeGroupCode(code));
+  const current = await readDoc<GroupDoc>(k);
+  if (current) await assertCanOrder(current.items.map((i) => i.variantId));
   const locked = await updateDoc<GroupDoc, GroupDoc>(k, (raw) => {
     const doc = requireOpen(raw);
     if (!isHost(doc, caller)) throw new OrderError(MESSAGES.notHost, 403);
@@ -218,6 +230,7 @@ export async function submitGroup(code: string, caller: Caller): Promise<PublicO
     qty: i.qty,
     member: i.member,
     ...(i.note ? { note: i.note } : {}),
+    ...(i.options ? { options: i.options } : {}),
     kiotvietProductId: i.kiotvietProductId,
   }));
 

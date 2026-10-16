@@ -24,14 +24,14 @@ enum Size {
 }
 
 const CATEGORIES: MenuCategory[] = [
-  { id: Cat.Coffee, name: "Cà phê" },
-  { id: Cat.MilkTea, name: "Trà sữa & Cacao" },
-  { id: Cat.Matcha, name: "Matcha" },
-  { id: Cat.FruitTea, name: "Trà trái cây" },
-  { id: Cat.Yogurt, name: "Sữa chua" },
-  { id: Cat.Juice, name: "Nước ép" },
-  { id: Cat.Bottled, name: "Nước đóng chai" },
-  { id: Cat.Other, name: "Khác" },
+  { id: Cat.Coffee, name: "Cà phê", customizable: true },
+  { id: Cat.MilkTea, name: "Trà sữa & Cacao", customizable: true },
+  { id: Cat.Matcha, name: "Matcha", customizable: true },
+  { id: Cat.FruitTea, name: "Trà trái cây", customizable: true },
+  { id: Cat.Yogurt, name: "Sữa chua", customizable: true },
+  { id: Cat.Juice, name: "Nước ép", customizable: true },
+  { id: Cat.Bottled, name: "Nước đóng chai", customizable: false },
+  { id: Cat.Other, name: "Khác", customizable: false },
 ];
 
 type Row = [id: string, name: string, cat: Cat, prices: Partial<Record<Size, number>>, tag?: string];
@@ -67,7 +67,7 @@ const ROWS: Row[] = [
   ["sc-dau", "Sữa Chua Dâu", Cat.Yogurt, { [Size.One]: 22000 }],
   ["sc-xoai", "Sữa Chua Xoài", Cat.Yogurt, { [Size.One]: 22000 }],
   ["sc-da", "Sữa Chua Đá", Cat.Yogurt, { [Size.One]: 20000 }],
-  ["sc-hop", "Sữa chua hộp", Cat.Yogurt, { [Size.One]: 12000 }],
+  ["sc-hop", "Sữa chua hộp", Cat.Bottled, { [Size.One]: 12000 }],
 
   ["ep-cam", "Nước Ép Cam", Cat.Juice, { [Size.One]: 25000 }],
   ["ep-dua", "Nước Ép Dứa (Thơm)", Cat.Juice, { [Size.One]: 25000 }],

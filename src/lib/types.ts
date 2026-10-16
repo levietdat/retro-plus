@@ -1,4 +1,4 @@
-import type { GroupStatus, OrderStatus, ServeMode, MenuSource } from "./constants";
+import type { GroupStatus, IceLevel, OrderStatus, ServeMode, MenuSource, SugarLevel } from "./constants";
 
 export interface MenuVariant {
   /** Stable id used in orders. Static menu: slug; KiotViet: product id as string. */
@@ -21,6 +21,13 @@ export interface MenuItem {
 export interface MenuCategory {
   id: string;
   name: string;
+  /** Drinks made at the bar get sugar/ice options; bottled drinks don't. */
+  customizable: boolean;
+}
+
+export interface DrinkOptions {
+  sugar: SugarLevel;
+  ice: IceLevel;
 }
 
 export interface Menu {
@@ -35,6 +42,7 @@ export interface CreateOrderLineInput {
   variantId: string;
   qty: number;
   note?: string;
+  options?: Partial<DrinkOptions>;
 }
 
 export interface CreateOrderInput {
@@ -55,6 +63,8 @@ export interface OrderLine {
   note?: string;
   /** Who in a group ordered this line. */
   member?: string;
+  /** Only set when different from the default (100% đường, đá bình thường). */
+  options?: DrinkOptions;
   kiotvietProductId?: number;
 }
 
@@ -74,6 +84,7 @@ export interface Order {
   kiotvietOrderCode: string | null;
   kiotvietError: string | null;
   groupCode?: string;
+  paid?: boolean;
 }
 
 /** Public view of an order (no admin-only fields). */
@@ -87,13 +98,37 @@ export interface PublicOrder {
   status: OrderStatus;
   createdAt: number;
   ahead: number;
+  /** Rough minutes until this order is ready (0 once it is). */
+  waitMinutes: number;
   groupCode?: string;
+  paid: boolean;
 }
 
 export interface OrderStats {
   waiting: number;
   making: number;
   today: number;
+  waitMinutes: number;
+  acceptingOrders: boolean;
+  soldOut: string[];
+}
+
+export interface ShopSettings {
+  acceptingOrders: boolean;
+  /** Variant ids that are sold out right now. */
+  soldOut: string[];
+  updatedAt: number;
+}
+
+export interface PaymentInfo {
+  bankId: string;
+  accountNo: string;
+  accountName: string;
+}
+
+export interface AdminOrderPatch {
+  status?: OrderStatus;
+  paid?: boolean;
 }
 
 export interface ApiError {
@@ -118,6 +153,7 @@ export interface GroupItem {
   price: number;
   qty: number;
   note: string;
+  options?: DrinkOptions;
   addedAt: number;
   kiotvietProductId?: number;
 }
@@ -175,6 +211,7 @@ export interface AddGroupItemInput {
   variantId: string;
   qty?: number;
   note?: string;
+  options?: Partial<DrinkOptions>;
 }
 
 export interface UpdateGroupItemInput {

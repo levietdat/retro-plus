@@ -14,7 +14,8 @@ import {
   SHOP_NAME,
 } from "@/lib/constants";
 import { dayKey, formatMoney, formatTime } from "@/lib/format";
-import type { Order } from "@/lib/types";
+import type { AdminOrderPatch, Menu, Order, ShopSettings } from "@/lib/types";
+import { SoldOutPanel } from "./SoldOutPanel";
 import { OrderLines } from "./OrderLines";
 
 const TABS: OrderStatus[] = [OrderStatus.New, OrderStatus.Making, OrderStatus.Ready, OrderStatus.Done, OrderStatus.Cancelled];
@@ -38,7 +39,7 @@ function beep(ctx: AudioContext) {
   o.stop(ctx.currentTime + 0.55);
 }
 
-export function AdminBoard() {
+export function AdminBoard({ menu }: { menu: Menu }) {
   const router = useRouter();
   const [day, setDay] = useState(dayKey());
   const [orders, setOrders] = useState<Order[]>([]);
@@ -47,6 +48,8 @@ export function AdminBoard() {
   const [busy, setBusy] = useState<string | null>(null);
   const [sound, setSound] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [settings, setSettings] = useState<ShopSettings | null>(null);
+  const [showSoldOut, setShowSoldOut] = useState(false);
   const audio = useRef<AudioContext | null>(null);
   const known = useRef<Set<string> | null>(null);
   const isToday = day === dayKey();
@@ -78,6 +81,29 @@ export function AdminBoard() {
   }, [load]);
 
   useEffect(() => {
+    fetch(API.adminSettings, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s: ShopSettings | null) => s && setSettings(s))
+      .catch(() => undefined);
+  }, []);
+
+  async function saveSettings(patch: Partial<Pick<ShopSettings, "acceptingOrders" | "soldOut">>) {
+    if (settings) setSettings({ ...settings, ...patch });
+    const res = await fetch(API.adminSettings, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (res.ok) setSettings(await res.json());
+  }
+
+  function toggleSoldOut(ids: string[], out: boolean) {
+    const cur = new Set(settings?.soldOut ?? []);
+    ids.forEach((id) => (out ? cur.add(id) : cur.delete(id)));
+    saveSettings({ soldOut: [...cur] });
+  }
+
+  useEffect(() => {
     try {
       if (localStorage.getItem(STORAGE_KEY_SOUND) === "1") setSound(true);
     } catch {
@@ -102,14 +128,14 @@ export function AdminBoard() {
     }
   }
 
-  async function setStatus(o: Order, status: OrderStatus) {
+  async function patch(o: Order, change: AdminOrderPatch) {
     setBusy(o.id);
-    setOrders((list) => list.map((x) => (x.id === o.id ? { ...x, status } : x)));
+    setOrders((list) => list.map((x) => (x.id === o.id ? { ...x, ...change } : x)));
     try {
       await fetch(API.adminOrder(o.id), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify(change),
       });
     } finally {
       setBusy(null);
@@ -126,6 +152,10 @@ export function AdminBoard() {
   const valid = orders.filter((o) => o.status !== OrderStatus.Cancelled);
   const revenue = valid.reduce((s, o) => s + o.total, 0);
   const cups = valid.reduce((s, o) => s + o.lines.reduce((a, l) => a + l.qty, 0), 0);
+  const unpaid = valid.filter((o) => !o.paid).reduce((s, o) => s + o.total, 0);
+  const setStatus = (o: Order, status: OrderStatus) => patch(o, { status });
+  const accepting = settings?.acceptingOrders ?? true;
+  const soldOutSet = new Set(settings?.soldOut ?? []);
   const list = orders
     .filter((o) => o.status === tab)
     .sort((a, b) =>
@@ -156,6 +186,16 @@ export function AdminBoard() {
           ))}
         </div>
         <div className="right">
+          <button
+            className={`ghost toggle-accept${accepting ? "" : " off"}`}
+            aria-pressed={!accepting}
+            onClick={() => saveSettings({ acceptingOrders: !accepting })}
+          >
+            {accepting ? "Đang nhận đơn" : "Đã tạm ngưng nhận đơn"}
+          </button>
+          <button className="ghost" aria-expanded={showSoldOut} onClick={() => setShowSoldOut((v) => !v)}>
+            Món hết ({soldOutSet.size})
+          </button>
           <input id="day" type="date" className="field" value={day} max={dayKey()} onChange={(e) => e.target.value && setDay(e.target.value)} />
           <button className="ghost" onClick={toggleSound} aria-pressed={sound}>{sound ? "🔔 Chuông: bật" : "🔕 Chuông: tắt"}</button>
           <button className="ghost" onClick={logout}>Đăng xuất</button>
@@ -166,7 +206,11 @@ export function AdminBoard() {
         <span>{isToday ? "Hôm nay" : day}: <b>{valid.length}</b> đơn</span>
         <span><b>{cups}</b> món</span>
         <span>Doanh thu <b>{formatMoney(revenue)}</b></span>
+        <span>Chưa thu <b>{formatMoney(unpaid)}</b></span>
       </div>
+
+      {!accepting && <p className="banner warn">Khách đang thấy thông báo tạm ngưng và không gửi được đơn online.</p>}
+      {showSoldOut && <SoldOutPanel menu={menu} soldOut={soldOutSet} onToggle={toggleSoldOut} />}
 
       <div className="board">
         {!loaded && <p className="board-empty">Đang tải đơn…</p>}
@@ -184,6 +228,16 @@ export function AdminBoard() {
               <div className="who">
                 {o.customer} · {o.mode === ServeMode.Table ? `Bàn ${o.table}` : SERVE_MODE_LABEL[ServeMode.Takeaway]} ·{" "}
                 <span className="num">{formatMoney(o.total)}</span>
+                {o.status !== OrderStatus.Cancelled && (
+                  <button
+                    className={`paid-toggle${o.paid ? " on" : ""}`}
+                    aria-pressed={Boolean(o.paid)}
+                    disabled={busy === o.id}
+                    onClick={() => patch(o, { paid: !o.paid })}
+                  >
+                    {o.paid ? "Đã thu" : "Chưa thu"}
+                  </button>
+                )}
               </div>
               {o.groupCode && <div className="kv">Đơn nhóm {o.groupCode} · {o.lines.reduce((s, l) => s + l.qty, 0)} ly</div>}
               <OrderLines lines={o.lines} />

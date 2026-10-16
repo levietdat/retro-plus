@@ -13,6 +13,19 @@ Web gọi món cho quán Retro Huế, gồm 3 trang:
 
 Mã đơn đánh số lại từ R001 mỗi ngày (giờ Việt Nam).
 
+### Tính năng học từ các app lớn
+
+| Tính năng | Lấy ý từ |
+|---|---|
+| Chọn size, **đường 100/70/50/30/0%**, **đá bình thường/ít/không/riêng**, ghi chú từng ly | Highlands, Phúc Long, Katinat |
+| **Gọi lại như lần trước** một chạm | Starbucks (favorites / reorder) |
+| **Thời gian chờ ước tính** ở đầu trang và trang đơn | Starbucks (order ahead) |
+| **Báo khi món xong**: rung điện thoại, nhấp nháy tiêu đề tab, thông báo hệ thống nếu khách cho phép | Starbucks, McDonald's |
+| **Bán chạy tuần này** đặt lên đầu menu, tự tính từ đơn thật 7 ngày | GoTab, Toast (best sellers first) |
+| **Thanh toán VietQR** ngay trên trang đơn, nội dung có sẵn mã đơn; quầy bấm *Đã thu* | Các chuỗi F&B Việt |
+| Quầy bấm **Tạm ngưng nhận đơn** và **Món hết** lúc đông | GoTab (order pacing, 86'd items) |
+| Đồ đóng chai (Sting, Coca…) thêm thẳng, không hỏi đường đá | Ít chạm nhất có thể |
+
 **QR theo bàn:** in QR trỏ tới `https://<tên-site>.netlify.app/?ban=5`. Khách quét sẽ có sẵn số bàn.
 
 ## Deploy lên Netlify
@@ -69,6 +82,18 @@ Lấy Client ID và Mã bảo mật trong KiotViet (Thiết lập → Thiết l�
 | `KIOTVIET_CLIENT_SECRET` | Mã bảo mật |
 | `KIOTVIET_PUSH_ORDERS` | `true` để đẩy đơn web vào KiotViet (hiện trên máy POS) |
 | `KIOTVIET_BRANCH_ID` | ID chi nhánh nhận đơn |
+
+### Thanh toán VietQR và thời gian chờ
+
+| Biến | Giá trị |
+|---|---|
+| `BANK_ID` | Mã ngân hàng theo VietQR: `VCB`, `MB`, `TCB`, `ACB`, `VPB`, `BIDV`, `ICB`… |
+| `BANK_ACCOUNT_NO` | Số tài khoản nhận tiền |
+| `BANK_ACCOUNT_NAME` | Tên chủ tài khoản (in hoa, không dấu) |
+| `PREP_MINUTES_PER_CUP` | Số phút pha trung bình mỗi ly, mặc định 2 |
+| `BARISTAS` | Số người đang pha, mặc định 1 |
+
+Không đặt `BANK_ID` thì trang đơn chỉ ghi "thanh toán tại quầy". Quầy vẫn bấm *Đã thu / Chưa thu* trên từng đơn để biết còn bao nhiêu tiền chưa thu trong ngày.
 
 Nếu KiotViet lỗi hoặc chưa cấu hình, web tự dùng thực đơn có sẵn trong `src/lib/menu-static.ts`, nên quán vẫn nhận đơn bình thường.
 Lần đầu bật, nên đối chiếu tên trường trả về trong `src/lib/kiotviet.ts` với dữ liệu thật của gian hàng.

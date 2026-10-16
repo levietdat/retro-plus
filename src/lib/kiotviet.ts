@@ -119,7 +119,7 @@ export async function fetchKiotVietMenu(): Promise<Menu> {
     fetchAll<KvCategory>(KIOTVIET.path.categories, { hierachicalData: "true" }),
     fetchAll<KvProduct>(KIOTVIET.path.products, { isActive: "true" }),
   ]);
-  const categories: MenuCategory[] = flatten(cats).map((c) => ({ id: String(c.categoryId), name: c.categoryName }));
+  const categories: MenuCategory[] = flatten(cats).map((c) => ({ id: String(c.categoryId), name: c.categoryName, customizable: true }));
   const items: MenuItem[] = products
     .filter((p) => p.isActive !== false && p.allowsSale !== false && typeof p.basePrice === "number")
     .map((p) => ({

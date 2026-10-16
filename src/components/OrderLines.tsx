@@ -1,4 +1,5 @@
 import { formatMoney } from "@/lib/format";
+import { describeOptions } from "@/lib/options";
 import type { OrderLine } from "@/lib/types";
 
 interface Props {
@@ -24,7 +25,9 @@ export function OrderLines({ lines, withPrice }: Props) {
               <span>
                 {l.qty} × {l.name}
                 {l.size ? ` (${l.size})` : ""}
-                {l.note && <em className="onote"> · {l.note}</em>}
+                {(l.options || l.note) && (
+                  <em className="onote"> · {[describeOptions(l.options), l.note].filter(Boolean).join(" · ")}</em>
+                )}
               </span>
               {withPrice && <span className="num">{formatMoney(l.qty * l.price)}</span>}
             </div>

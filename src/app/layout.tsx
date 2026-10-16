@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { SHOP_NAME } from "@/lib/constants";
+import { StatsProvider } from "@/components/StatsProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -27,7 +28,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <div className="wrap">{children}</div>
+        <div className="wrap">
+          <StatsProvider>{children}</StatsProvider>
+        </div>
       </body>
     </html>
   );

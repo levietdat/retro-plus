@@ -46,6 +46,40 @@ export const SERVE_MODE_LABEL: Record<ServeMode, string> = {
   [ServeMode.Takeaway]: "Mang đi",
 };
 
+/* ---------- Drink options (like the big VN tea/coffee chains) ---------- */
+export enum SugarLevel {
+  Full = "100",
+  Less = "70",
+  Half = "50",
+  Little = "30",
+  None = "0",
+}
+
+export const SUGAR_LABEL: Record<SugarLevel, string> = {
+  [SugarLevel.Full]: "100%",
+  [SugarLevel.Less]: "70%",
+  [SugarLevel.Half]: "50%",
+  [SugarLevel.Little]: "30%",
+  [SugarLevel.None]: "Không",
+};
+
+export enum IceLevel {
+  Normal = "normal",
+  Less = "less",
+  None = "none",
+  Separate = "separate",
+}
+
+export const ICE_LABEL: Record<IceLevel, string> = {
+  [IceLevel.Normal]: "Bình thường",
+  [IceLevel.Less]: "Ít đá",
+  [IceLevel.None]: "Không đá",
+  [IceLevel.Separate]: "Đá riêng",
+};
+
+export const DEFAULT_SUGAR = SugarLevel.Full;
+export const DEFAULT_ICE = IceLevel.Normal;
+
 export enum MenuSource {
   Static = "static",
   KiotViet = "kiotviet",
@@ -94,6 +128,7 @@ export const API = {
   adminLogout: "/api/admin/logout",
   adminOrders: "/api/admin/orders",
   adminOrder: (id: string) => `/api/admin/orders/${id}`,
+  adminSettings: "/api/admin/settings",
 } as const;
 
 export const ADMIN_COOKIE = "retro_admin";
@@ -118,6 +153,7 @@ export const LIMITS = {
 export const STORAGE_KEY_CUSTOMER = "retro-customer";
 export const STORAGE_KEY_MEMBER_ID = "retro-member-id";
 export const STORAGE_KEY_HOST_TOKEN = (code: string) => `retro-host-${code}`;
+export const STORAGE_KEY_LAST_ORDER = "retro-last-order";
 
 export const ENV = {
   adminPassword: "ADMIN_PASSWORD",
@@ -130,7 +166,33 @@ export const ENV = {
   kvClientSecret: "KIOTVIET_CLIENT_SECRET",
   kvBranchId: "KIOTVIET_BRANCH_ID",
   kvPushOrders: "KIOTVIET_PUSH_ORDERS",
+  prepMinutesPerCup: "PREP_MINUTES_PER_CUP",
+  baristas: "BARISTAS",
+  bankId: "BANK_ID",
+  bankAccountNo: "BANK_ACCOUNT_NO",
+  bankAccountName: "BANK_ACCOUNT_NAME",
 } as const;
+
+export const WAIT = {
+  defaultMinutesPerCup: 2,
+  defaultBaristas: 1,
+} as const;
+
+export const POPULAR = {
+  days: 7,
+  limit: 6,
+  cacheMs: 10 * 60 * 1000,
+  minOrders: 3,
+} as const;
+
+/** VietQR quick-link image (https://www.vietqr.io). */
+export const VIETQR = {
+  imageUrl: (bankId: string, accountNo: string) =>
+    `https://img.vietqr.io/image/${encodeURIComponent(bankId)}-${encodeURIComponent(accountNo)}-compact2.png`,
+  transferPrefix: "RETRO",
+} as const;
+
+export const SETTINGS_KEY = "settings/shop";
 
 export enum StorageDriver {
   File = "file",
@@ -188,4 +250,7 @@ export const MESSAGES = {
   notHost: "Chỉ người tạo nhóm mới gửi được đơn.",
   notYourItem: "Bạn chỉ sửa được món của mình.",
   needMemberName: "Nhập tên của bạn trước khi chọn món.",
+  shopPaused: "Quán đang tạm ngưng nhận đơn online. Vui lòng gọi món tại quầy.",
+  soldOut: "Có món vừa hết. Bỏ món đó ra rồi gửi lại.",
+  invalidOptions: "Tuỳ chọn đường/đá không hợp lệ.",
 } as const;

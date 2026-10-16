@@ -1,5 +1,12 @@
 "use client";
-import { GROUP, MESSAGES, STORAGE_KEY_CUSTOMER, STORAGE_KEY_HOST_TOKEN, STORAGE_KEY_MEMBER_ID } from "./constants";
+import {
+  GROUP,
+  MESSAGES,
+  STORAGE_KEY_CUSTOMER,
+  STORAGE_KEY_HOST_TOKEN,
+  STORAGE_KEY_LAST_ORDER,
+  STORAGE_KEY_MEMBER_ID,
+} from "./constants";
 import type { ApiError } from "./types";
 
 export interface SavedCustomer {
@@ -78,4 +85,30 @@ export async function apiJson<T>(url: string, method: HttpMethod, body?: unknown
   const data = (await res.json().catch(() => ({ error: MESSAGES.sendFail }))) as T | ApiError;
   if (!res.ok) throw Object.assign(new Error((data as ApiError).error || MESSAGES.sendFail), { status: res.status });
   return data as T;
+}
+
+/* ---------- Last order, for one-tap reorder ---------- */
+export interface StoredLine {
+  variantId: string;
+  qty: number;
+  options?: import("./types").DrinkOptions;
+  note?: string;
+}
+
+export interface StoredLastOrder {
+  at: number;
+  lines: StoredLine[];
+}
+
+export function loadLastOrder(): StoredLastOrder | null {
+  try {
+    const raw = safeGet(STORAGE_KEY_LAST_ORDER);
+    return raw ? (JSON.parse(raw) as StoredLastOrder) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastOrder(lines: StoredLine[]) {
+  safeSet(STORAGE_KEY_LAST_ORDER, JSON.stringify({ at: Date.now(), lines } satisfies StoredLastOrder));
 }
