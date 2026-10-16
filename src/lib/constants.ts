@@ -51,8 +51,29 @@ export enum MenuSource {
   KiotViet = "kiotviet",
 }
 
+export enum GroupStatus {
+  Open = "open",
+  Submitted = "submitted",
+  Closed = "closed",
+}
+
+export const GROUP = {
+  keyPrefix: "group/",
+  codeLength: 6,
+  /** No 0/O/1/I so codes are easy to read aloud. */
+  codeAlphabet: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
+  tokenBytes: 18,
+  maxItems: 60,
+  maxMembers: 20,
+  ttlHours: 6,
+  memberHeader: "x-member-id",
+  hostHeader: "x-host-token",
+  memberIdMaxLength: 64,
+} as const;
+
 export const ROUTES = {
   home: "/",
+  group: (code: string) => `/g/${encodeURIComponent(code)}`,
   order: (code: string) => `/order/${encodeURIComponent(code)}`,
   admin: "/admin",
   adminLogin: "/admin/login",
@@ -63,6 +84,12 @@ export const API = {
   orders: "/api/orders",
   orderStats: "/api/orders/stats",
   orderByCode: (code: string) => `/api/orders/${encodeURIComponent(code)}`,
+  groups: "/api/groups",
+  group: (code: string) => `/api/groups/${encodeURIComponent(code)}`,
+  groupItems: (code: string) => `/api/groups/${encodeURIComponent(code)}/items`,
+  groupItem: (code: string, itemId: string) =>
+    `/api/groups/${encodeURIComponent(code)}/items/${encodeURIComponent(itemId)}`,
+  groupSubmit: (code: string) => `/api/groups/${encodeURIComponent(code)}/submit`,
   adminLogin: "/api/admin/login",
   adminLogout: "/api/admin/logout",
   adminOrders: "/api/admin/orders",
@@ -76,6 +103,7 @@ export const POLL_MS = {
   publicStats: 5000,
   orderStatus: 4000,
   adminBoard: 3000,
+  group: 2500,
 } as const;
 
 export const LIMITS = {
@@ -84,9 +112,12 @@ export const LIMITS = {
   note: 200,
   linesPerOrder: 30,
   qtyPerLine: 20,
+  lineNote: 80,
 } as const;
 
 export const STORAGE_KEY_CUSTOMER = "retro-customer";
+export const STORAGE_KEY_MEMBER_ID = "retro-member-id";
+export const STORAGE_KEY_HOST_TOKEN = (code: string) => `retro-host-${code}`;
 
 export const ENV = {
   adminPassword: "ADMIN_PASSWORD",
@@ -149,4 +180,12 @@ export const MESSAGES = {
   menuLoadFail: "Không tải được thực đơn.",
   noResult: "Không thấy món nào khớp.",
   boardEmpty: "Chưa có đơn nào ở mục này.",
+  groupNotFound: "Không tìm thấy nhóm. Kiểm tra lại mã hoặc link.",
+  groupClosed: "Nhóm này đã gửi đơn hoặc đã hết hạn.",
+  groupFull: "Nhóm đã đủ món tối đa. Gửi đơn này rồi tạo nhóm mới.",
+  groupTooManyMembers: "Nhóm đã đủ người.",
+  groupEmpty: "Nhóm chưa có món nào.",
+  notHost: "Chỉ người tạo nhóm mới gửi được đơn.",
+  notYourItem: "Bạn chỉ sửa được món của mình.",
+  needMemberName: "Nhập tên của bạn trước khi chọn món.",
 } as const;

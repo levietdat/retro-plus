@@ -15,6 +15,7 @@ import {
 } from "@/lib/constants";
 import { dayKey, formatMoney, formatTime } from "@/lib/format";
 import type { Order } from "@/lib/types";
+import { OrderLines } from "./OrderLines";
 
 const TABS: OrderStatus[] = [OrderStatus.New, OrderStatus.Making, OrderStatus.Ready, OrderStatus.Done, OrderStatus.Cancelled];
 const FRESH_MS = 60_000;
@@ -184,11 +185,8 @@ export function AdminBoard() {
                 {o.customer} · {o.mode === ServeMode.Table ? `Bàn ${o.table}` : SERVE_MODE_LABEL[ServeMode.Takeaway]} ·{" "}
                 <span className="num">{formatMoney(o.total)}</span>
               </div>
-              <ul>
-                {o.lines.map((l) => (
-                  <li key={l.variantId}>{l.qty} × {l.name}{l.size ? ` (${l.size})` : ""}</li>
-                ))}
-              </ul>
+              {o.groupCode && <div className="kv">Đơn nhóm {o.groupCode} · {o.lines.reduce((s, l) => s + l.qty, 0)} ly</div>}
+              <OrderLines lines={o.lines} />
               {o.note && <div className="note">{o.note}</div>}
               {o.kiotvietOrderCode && <div className="kv">KiotViet: {o.kiotvietOrderCode}</div>}
               {o.kiotvietError && <div className="kv bad">Chưa đẩy được lên KiotViet</div>}

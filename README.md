@@ -6,6 +6,11 @@ Web gọi món cho quán Retro Huế, gồm 3 trang:
 - `/order/R012` — trang theo dõi đơn: số đơn trước mình, trạng thái Mới → Đang pha → Xong. Tự cập nhật.
 - `/admin` — quầy pha chế, cần mật khẩu. Xem tất cả đơn theo trạng thái, bấm chuyển bước, huỷ đơn, có chuông báo đơn mới, xem lại ngày cũ và doanh thu trong ngày.
 
+- `/g/HND97U` — **đơn nhóm**: một người bấm *Tạo đơn nhóm* ở trang chủ, gửi link hoặc mã QR cho bạn bè.
+  Mỗi người mở link trên điện thoại, nhập tên, tự chọn món và ghi chú riêng cho từng ly.
+  Ai cũng thấy cả nhóm đã chọn gì, chỉ sửa được ly của mình. Trưởng nhóm bấm *Gửi đơn cho quầy* một lần;
+  quầy nhận một đơn chia theo tên từng người. Nhóm tự đóng sau 6 giờ.
+
 Mã đơn đánh số lại từ R001 mỗi ngày (giờ Việt Nam).
 
 **QR theo bàn:** in QR trỏ tới `https://<tên-site>.netlify.app/?ban=5`. Khách quét sẽ có sẵn số bàn.
@@ -80,7 +85,8 @@ src/lib/constants.ts     enum, hằng số, thông báo (không dùng chuỗi r�
 src/lib/types.ts         interface dữ liệu
 src/lib/storage.ts       lưu đơn: Netlify Blobs hoặc file JSON, ghi có kiểm tra phiên bản
 src/lib/orders.ts        tạo đơn (tính giá ở server), thống kê, đổi trạng thái
+src/lib/groups.ts        đơn nhóm: tạo nhóm, thêm/sửa/xoá ly, trưởng nhóm gửi đơn
 src/lib/kiotviet.ts      client KiotViet FnB: token, nhóm hàng, hàng hoá, tạo đơn
 src/app/api/...          API cho trang khách và trang quản trị
-src/components/...       giao diện: OrderApp, OrderStatusView, AdminBoard
+src/components/...       giao diện: OrderApp, GroupApp, OrderStatusView, AdminBoard
 ```

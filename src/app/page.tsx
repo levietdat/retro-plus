@@ -1,3 +1,4 @@
+import { GroupEntry } from "@/components/GroupEntry";
 import { Header } from "@/components/Header";
 import { OrderApp } from "@/components/OrderApp";
 import { getMenu } from "@/lib/menu";
@@ -9,6 +10,7 @@ export default async function HomePage() {
   return (
     <>
       <Header />
+      <GroupEntry />
       <OrderApp menu={menu} />
     </>
   );

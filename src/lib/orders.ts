@@ -3,7 +3,7 @@ import { ACTIVE_ORDER_STATUSES, ENV, LIMITS, MESSAGES, OrderStatus, ServeMode, S
 import { dayKey } from "./format";
 import { pushOrderToKiotViet, isKiotVietConfigured } from "./kiotviet";
 import { findVariant, getMenu } from "./menu";
-import { getDayStore, updateDay } from "./storage";
+import { readDay, updateDay } from "./storage";
 import type { CreateOrderInput, Order, OrderLine, OrderStats, PublicOrder } from "./types";
 
 export class OrderError extends Error {
@@ -12,10 +12,16 @@ export class OrderError extends Error {
   }
 }
 
-const isServeMode = (v: unknown): v is ServeMode => Object.values(ServeMode).includes(v as ServeMode);
+export const isServeMode = (v: unknown): v is ServeMode => Object.values(ServeMode).includes(v as ServeMode);
 export const isOrderStatus = (v: unknown): v is OrderStatus => Object.values(OrderStatus).includes(v as OrderStatus);
 
-const clean = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+export const clean = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+
+export function cleanQty(v: unknown): number {
+  const qty = Math.floor(Number(v));
+  if (!Number.isFinite(qty) || qty < 1 || qty > LIMITS.qtyPerLine) throw new OrderError(MESSAGES.invalidOrder);
+  return qty;
+}
 
 function formatCode(seq: number): string {
   return STORAGE.orderCodePrefix + String(seq).padStart(STORAGE.orderCodeDigits, "0");
@@ -28,29 +34,32 @@ async function buildLines(input: CreateOrderInput): Promise<OrderLine[]> {
   }
   const menu = await getMenu();
   return input.lines.map((l) => {
-    const qty = Math.floor(Number(l.qty));
-    if (!Number.isFinite(qty) || qty < 1 || qty > LIMITS.qtyPerLine) throw new OrderError(MESSAGES.invalidOrder);
     const found = findVariant(menu, String(l.variantId));
     if (!found) throw new OrderError(MESSAGES.itemUnavailable);
+    const note = clean(l.note, LIMITS.lineNote);
     return {
       variantId: found.variant.id,
       name: found.item.name,
       size: found.variant.label,
       price: found.variant.price,
-      qty,
+      qty: cleanQty(l.qty),
+      ...(note ? { note } : {}),
       kiotvietProductId: found.variant.kiotvietProductId,
     };
   });
 }
 
-export async function createOrder(input: CreateOrderInput): Promise<PublicOrder> {
-  const customer = clean(input.customer, LIMITS.customerName);
-  if (!customer) throw new OrderError(MESSAGES.needName);
-  if (!isServeMode(input.mode)) throw new OrderError(MESSAGES.invalidOrder);
-  const table = input.mode === ServeMode.Table ? clean(input.table, LIMITS.table) : "";
-  if (input.mode === ServeMode.Table && !table) throw new OrderError(MESSAGES.needTable);
+export interface NewOrderBase {
+  customer: string;
+  mode: ServeMode;
+  table: string;
+  note: string;
+  groupCode?: string;
+}
 
-  const lines = await buildLines(input);
+/** Stores an order with already-priced lines; used by single and group orders. */
+export async function insertOrder(base: NewOrderBase, lines: OrderLine[]): Promise<PublicOrder> {
+  if (lines.length === 0) throw new OrderError(MESSAGES.invalidOrder);
   const now = Date.now();
   const day = dayKey(now);
 
@@ -59,10 +68,7 @@ export async function createOrder(input: CreateOrderInput): Promise<PublicOrder>
     const created: Order = {
       id: `${day}-${seq}`,
       code: formatCode(seq),
-      customer,
-      mode: input.mode,
-      table,
-      note: clean(input.note, LIMITS.note),
+      ...base,
       lines,
       total: lines.reduce((s, l) => s + l.price * l.qty, 0),
       status: OrderStatus.New,
@@ -84,8 +90,17 @@ export async function createOrder(input: CreateOrderInput): Promise<PublicOrder>
     }
   }
 
-  const { orders } = (await getDayStore().read(day)).doc;
-  return toPublic(order, orders);
+  return toPublic(order, (await readDay(day)).orders);
+}
+
+export async function createOrder(input: CreateOrderInput): Promise<PublicOrder> {
+  const customer = clean(input.customer, LIMITS.customerName);
+  if (!customer) throw new OrderError(MESSAGES.needName);
+  if (!isServeMode(input.mode)) throw new OrderError(MESSAGES.invalidOrder);
+  const table = input.mode === ServeMode.Table ? clean(input.table, LIMITS.table) : "";
+  if (input.mode === ServeMode.Table && !table) throw new OrderError(MESSAGES.needTable);
+  const lines = await buildLines(input);
+  return insertOrder({ customer, mode: input.mode, table, note: clean(input.note, LIMITS.note) }, lines);
 }
 
 function toPublic(order: Order, sameDay: Order[]): PublicOrder {
@@ -102,11 +117,12 @@ function toPublic(order: Order, sameDay: Order[]): PublicOrder {
     status: order.status,
     createdAt: order.createdAt,
     ahead,
+    ...(order.groupCode ? { groupCode: order.groupCode } : {}),
   };
 }
 
 export async function getTodayOrders(): Promise<Order[]> {
-  return (await getDayStore().read(dayKey())).doc.orders;
+  return (await readDay(dayKey())).orders;
 }
 
 export async function getStats(): Promise<OrderStats> {
@@ -146,5 +162,5 @@ export async function patchOrder(
 }
 
 export async function getOrdersForDay(day: string): Promise<Order[]> {
-  return (await getDayStore().read(day)).doc.orders;
+  return (await readDay(day)).orders;
 }

@@ -13,6 +13,7 @@ import {
 } from "@/lib/constants";
 import { formatMoney, formatTime } from "@/lib/format";
 import type { PublicOrder } from "@/lib/types";
+import { OrderLines } from "./OrderLines";
 
 const STEPS: OrderStatus[] = [OrderStatus.New, OrderStatus.Making, OrderStatus.Ready];
 const FINAL: OrderStatus[] = [OrderStatus.Done, OrderStatus.Cancelled];
@@ -89,12 +90,7 @@ export function OrderStatusView({ code }: { code: string }) {
         </>
       )}
       <div className="receipt">
-        {order.lines.map((l) => (
-          <div key={l.variantId}>
-            <span>{l.qty} × {l.name}{l.size ? ` (${l.size})` : ""}</span>
-            <span className="num">{formatMoney(l.qty * l.price)}</span>
-          </div>
-        ))}
+        <OrderLines lines={order.lines} withPrice />
         <div><strong>Tổng</strong><strong className="num">{formatMoney(order.total)}</strong></div>
         <p className="hint">
           {order.customer} · {order.mode === ServeMode.Table ? `Bàn ${order.table}` : SERVE_MODE_LABEL[ServeMode.Takeaway]} · thanh toán tại quầy

@@ -1,19 +1,11 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import {
-  API,
-  LIMITS,
-  MESSAGES,
-  ROUTES,
-  SERVE_MODE_LABEL,
-  ServeMode,
-  STORAGE_KEY_CUSTOMER,
-} from "@/lib/constants";
-import { formatMoney, searchKey } from "@/lib/format";
-import type { ApiError, CreateOrderInput, Menu, MenuItem, MenuVariant, PublicOrder } from "@/lib/types";
-
-const ALL = "all";
+import { useEffect, useState } from "react";
+import { API, LIMITS, MESSAGES, ROUTES, SERVE_MODE_LABEL, ServeMode } from "@/lib/constants";
+import { apiJson, HttpMethod, loadCustomer, saveCustomer } from "@/lib/client";
+import { formatMoney } from "@/lib/format";
+import type { CreateOrderInput, Menu, MenuItem, MenuVariant, PublicOrder } from "@/lib/types";
+import { MenuBrowser } from "./MenuBrowser";
 
 interface CartLine {
   variant: MenuVariant;
@@ -21,15 +13,8 @@ interface CartLine {
   qty: number;
 }
 
-interface SavedCustomer {
-  customer: string;
-  table: string;
-}
-
 export function OrderApp({ menu }: { menu: Menu }) {
   const router = useRouter();
-  const [category, setCategory] = useState<string>(ALL);
-  const [query, setQuery] = useState("");
   const [cart, setCart] = useState<Map<string, CartLine>>(new Map());
   const [mode, setMode] = useState<ServeMode>(ServeMode.Table);
   const [customer, setCustomer] = useState("");
@@ -40,28 +25,13 @@ export function OrderApp({ menu }: { menu: Menu }) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY_CUSTOMER) || "{}") as Partial<SavedCustomer>;
-      if (saved.customer) setCustomer(saved.customer);
-      if (saved.table) setTable(saved.table);
-    } catch {
-      /* ignore */
-    }
+    const saved = loadCustomer();
+    if (saved.customer) setCustomer(saved.customer);
+    if (saved.table) setTable(saved.table);
     // Table number from a QR code: /?ban=5
     const fromQr = new URLSearchParams(window.location.search).get("ban");
     if (fromQr) setTable(fromQr.slice(0, LIMITS.table));
   }, []);
-
-  const sections = useMemo(() => {
-    const q = searchKey(query.trim());
-    return menu.categories
-      .filter((c) => category === ALL || c.id === category)
-      .map((c) => ({
-        category: c,
-        items: menu.items.filter((i) => i.categoryId === c.id && (!q || searchKey(i.name).includes(q))),
-      }))
-      .filter((s) => s.items.length > 0);
-  }, [menu, category, query]);
 
   const lines = [...cart.values()];
   const count = lines.reduce((s, l) => s + l.qty, 0);
@@ -71,8 +41,7 @@ export function OrderApp({ menu }: { menu: Menu }) {
     setError("");
     setCart((prev) => {
       const next = new Map(prev);
-      const cur = next.get(variant.id);
-      const qty = Math.min((cur?.qty ?? 0) + delta, LIMITS.qtyPerLine);
+      const qty = Math.min((next.get(variant.id)?.qty ?? 0) + delta, LIMITS.qtyPerLine);
       if (qty <= 0) next.delete(variant.id);
       else next.set(variant.id, { item, variant, qty });
       return next;
@@ -92,19 +61,9 @@ export function OrderApp({ menu }: { menu: Menu }) {
       lines: lines.map((l) => ({ variantId: l.variant.id, qty: l.qty })),
     };
     try {
-      const res = await fetch(API.orders, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = (await res.json()) as PublicOrder | ApiError;
-      if (!res.ok || "error" in data) throw new Error("error" in data ? data.error : MESSAGES.sendFail);
-      try {
-        localStorage.setItem(STORAGE_KEY_CUSTOMER, JSON.stringify({ customer, table } satisfies SavedCustomer));
-      } catch {
-        /* ignore */
-      }
-      router.push(ROUTES.order(data.code));
+      const order = await apiJson<PublicOrder>(API.orders, HttpMethod.Post, body);
+      saveCustomer({ customer, table });
+      router.push(ROUTES.order(order.code));
     } catch (e) {
       setError((e as Error).message || MESSAGES.sendFail);
       setSending(false);
@@ -113,60 +72,7 @@ export function OrderApp({ menu }: { menu: Menu }) {
 
   return (
     <div className="layout">
-      <div>
-        <div className="tools">
-          <input
-            id="search"
-            className="search"
-            type="search"
-            placeholder="Tìm món… (vd: muối, matcha, chanh)"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            autoComplete="off"
-          />
-          <div className="chips">
-            {[{ id: ALL, name: "Tất cả" }, ...menu.categories].map((c) => (
-              <button key={c.id} className="chip" aria-pressed={category === c.id} onClick={() => setCategory(c.id)}>
-                {c.name}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {sections.length === 0 && <p className="empty">{MESSAGES.noResult}</p>}
-        {sections.map(({ category: c, items }) => (
-          <div className="section" key={c.id}>
-            <h2>
-              {c.name} <small>{items.length} món</small>
-            </h2>
-            {items.map((item) => (
-              <div className={`item${item.image ? "" : " noimg"}`} key={item.id}>
-                {item.image && <img src={item.image} alt="" loading="lazy" />}
-                <div>
-                  <div className="name">{item.name}</div>
-                  {item.tag && <div className="meta">{item.tag}</div>}
-                </div>
-                <div className="opts">
-                  {item.variants.map((v) => {
-                    const inCart = cart.get(v.id)?.qty ?? 0;
-                    return (
-                      <button
-                        key={v.id}
-                        className="add"
-                        onClick={() => change(item, v, 1)}
-                        aria-label={`Thêm ${item.name} ${v.label}`}
-                      >
-                        + <span className="num">{v.label ? `${v.label} · ` : ""}{formatMoney(v.price)}</span>
-                        {inCart > 0 && <span className="q">{inCart}</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
+      <MenuBrowser menu={menu} qtyFor={(id) => cart.get(id)?.qty ?? 0} onAdd={(item, v) => change(item, v, 1)} />
 
       <aside className={`ticket${open ? " open" : ""}`} aria-label="Đơn của bạn">
         <div className="ticket-head">
