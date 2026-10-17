@@ -105,10 +105,15 @@ export const GROUP = {
   memberIdMaxLength: 64,
 } as const;
 
+/** Query param carrying an order's private view key. */
+export const ORDER_KEY_PARAM = "k";
+export const ORDER_KEY_BYTES = 9;
+export const DAY_MS = 86_400_000;
+
 export const ROUTES = {
   home: "/",
   group: (code: string) => `/g/${encodeURIComponent(code)}`,
-  order: (code: string) => `/order/${encodeURIComponent(code)}`,
+  order: (code: string, key: string) => `/order/${encodeURIComponent(code)}?${ORDER_KEY_PARAM}=${encodeURIComponent(key)}`,
   admin: "/admin",
   adminLogin: "/admin/login",
 } as const;
@@ -116,8 +121,10 @@ export const ROUTES = {
 export const API = {
   menu: "/api/menu",
   orders: "/api/orders",
-  orderStats: "/api/orders/stats",
-  orderByCode: (code: string) => `/api/orders/${encodeURIComponent(code)}`,
+  storefront: "/api/storefront",
+  myOrders: "/api/orders/mine",
+  orderByCode: (code: string, key: string) =>
+    `/api/orders/${encodeURIComponent(code)}?${ORDER_KEY_PARAM}=${encodeURIComponent(key)}`,
   groups: "/api/groups",
   group: (code: string) => `/api/groups/${encodeURIComponent(code)}`,
   groupItems: (code: string) => `/api/groups/${encodeURIComponent(code)}/items`,
@@ -135,8 +142,14 @@ export const ADMIN_COOKIE = "retro_admin";
 export const ADMIN_SESSION_HOURS = 12;
 
 export const POLL_MS = {
-  publicStats: 5000,
+  /** Wait estimate, paused, sold out: changes slowly, also refreshed when the tab regains focus. */
+  storefront: 30000,
   orderStatus: 4000,
+  /** Status page slows down after a while so idle phones don't hammer the server. */
+  orderStatusSlow: 10000,
+  orderStatusSlowAfterMs: 10 * 60 * 1000,
+  /** Header "Đơn của bạn" status while one of them is still being made. */
+  myOrders: 15000,
   adminBoard: 3000,
   group: 2500,
 } as const;
@@ -148,12 +161,15 @@ export const LIMITS = {
   linesPerOrder: 30,
   qtyPerLine: 20,
   lineNote: 80,
+  requestId: 64,
 } as const;
 
 export const STORAGE_KEY_CUSTOMER = "retro-customer";
 export const STORAGE_KEY_MEMBER_ID = "retro-member-id";
 export const STORAGE_KEY_HOST_TOKEN = (code: string) => `retro-host-${code}`;
 export const STORAGE_KEY_LAST_ORDER = "retro-last-order";
+export const STORAGE_KEY_MY_ORDERS = "retro-my-orders";
+export const MY_ORDERS_MAX = 10;
 
 export const ENV = {
   adminPassword: "ADMIN_PASSWORD",
@@ -193,6 +209,20 @@ export const VIETQR = {
 } as const;
 
 export const SETTINGS_KEY = "settings/shop";
+
+/** Short CDN cache for the public storefront status (seconds). */
+export const STOREFRONT_CACHE = { sMaxAge: 15, staleWhileRevalidate: 30 } as const;
+
+/**
+ * Best-effort spam guard per IP and serverless instance.
+ * Generous on purpose: every guest on the shop's Wi-Fi shares one public IP.
+ */
+export const RATE_LIMIT = {
+  windowMs: 60_000,
+  orders: 20,
+  groupWrites: 150,
+  ipHeaders: ["x-nf-client-connection-ip", "x-forwarded-for", "x-real-ip"],
+} as const;
 
 export enum StorageDriver {
   File = "file",
@@ -253,4 +283,5 @@ export const MESSAGES = {
   shopPaused: "Quán đang tạm ngưng nhận đơn online. Vui lòng gọi món tại quầy.",
   soldOut: "Có món vừa hết. Bỏ món đó ra rồi gửi lại.",
   invalidOptions: "Tuỳ chọn đường/đá không hợp lệ.",
+  tooMany: "Bạn gửi hơi nhanh. Đợi một chút rồi thử lại.",
 } as const;

@@ -8,7 +8,7 @@ import { getPopularItemIds } from "@/lib/orders";
 export const dynamic = "force-dynamic";
 
 export function generateMetadata({ params }: { params: { code: string } }) {
-  return { title: `Đơn nhóm ${normalizeGroupCode(params.code)} · ${SHOP_NAME}` };
+  return { title: `Đơn nhóm ${normalizeGroupCode(params.code)} · ${SHOP_NAME}`, robots: { index: false, follow: false } };
 }
 
 export default async function GroupPage({ params }: { params: { code: string } }) {

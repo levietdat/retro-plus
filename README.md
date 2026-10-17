@@ -2,8 +2,8 @@
 
 Web gọi món cho quán Retro Huế, gồm 3 trang:
 
-- `/` — khách xem thực đơn, chọn món, gửi đơn. Đầu trang hiện số đơn đang chờ và số đơn hôm nay.
-- `/order/R012` — trang theo dõi đơn: số đơn trước mình, trạng thái Mới → Đang pha → Xong. Tự cập nhật.
+- `/` — khách xem thực đơn, chọn món, gửi đơn. Đầu trang chỉ hiện **đơn của chính khách** (và đơn nhóm khách tham gia) kèm trạng thái.
+- `/order/R012?k=…` — trang theo dõi đơn: thời gian chờ ước tính, trạng thái Mới → Đang pha → Xong. Tự cập nhật.
 - `/admin` — quầy pha chế, cần mật khẩu. Xem tất cả đơn theo trạng thái, bấm chuyển bước, huỷ đơn, có chuông báo đơn mới, xem lại ngày cũ và doanh thu trong ngày.
 
 - `/g/HND97U` — **đơn nhóm**: một người bấm *Tạo đơn nhóm* ở trang chủ, gửi link hoặc mã QR cho bạn bè.
@@ -27,6 +27,20 @@ Mã đơn đánh số lại từ R001 mỗi ngày (giờ Việt Nam).
 | Đồ đóng chai (Sting, Coca…) thêm thẳng, không hỏi đường đá | Ít chạm nhất có thể |
 
 **QR theo bàn:** in QR trỏ tới `https://<tên-site>.netlify.app/?ban=5`. Khách quét sẽ có sẵn số bàn.
+
+### Riêng tư và an toàn
+
+- Khách **không thấy tổng số đơn** hay đơn của người khác. API công khai `/api/storefront` chỉ trả: quán có đang nhận đơn không, món nào tạm hết, thời gian chờ ước tính.
+- Mỗi đơn có một **khoá bí mật** trong link (`?k=…`). Thiếu khoá hoặc sai khoá thì trả về "không tìm thấy", nên đoán mã R001, R002… không xem được đơn người khác. Thành viên nhóm nhận khoá của đơn nhóm.
+- "Đơn của bạn" lưu trên chính điện thoại của khách, không có tài khoản.
+- **Bấm gửi hai lần** hay mạng chập chờn không tạo đơn trùng: mỗi lần thanh toán có một mã riêng, server thấy trùng thì trả lại đơn cũ.
+- **Chống spam** cơ bản: tối đa 20 đơn/phút và 150 thao tác nhóm/phút mỗi IP. Mức này rộng có chủ ý, vì cả quán dùng chung wifi là chung một IP. Muốn chặn cứng hơn thì thêm Rate limiting rule trong Netlify (Site configuration → Rate limiting) cho `/api/orders`.
+
+### Tốc độ
+
+- Trang chủ là HTML tĩnh trên CDN, tự dựng lại 5 phút một lần, nên mở rất nhanh sau khi quét QR. Mục "Bán chạy" cũng cập nhật theo nhịp này.
+- Trạng thái quán được CDN cache 15 giây, mỗi trình duyệt hỏi 30 giây một lần và hỏi lại ngay khi khách quay lại tab.
+- Trang đơn hỏi trạng thái 4 giây một lần, sau 10 phút hoặc khi tab ẩn thì giãn ra 10 giây. "Đơn của bạn" ở header ngừng hỏi khi mọi đơn đã xong.
 
 ## Deploy lên Netlify
 

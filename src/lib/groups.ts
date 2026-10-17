@@ -9,11 +9,11 @@ import type {
   AddGroupItemInput,
   CreateGroupInput,
   CreateGroupResult,
+  CreatedOrder,
   GroupDoc,
   GroupItem,
   OrderLine,
   PublicGroup,
-  PublicOrder,
   UpdateGroupInput,
   UpdateGroupItemInput,
 } from "./types";
@@ -78,6 +78,7 @@ function toPublic(doc: GroupDoc, caller: Caller): PublicGroup {
     createdAt: doc.createdAt,
     expiresAt: doc.createdAt + ttlMs,
     orderCode: doc.orderCode,
+    orderKey: doc.orderKey ?? null,
     isHost: isHost(doc, caller),
   };
 }
@@ -99,7 +100,7 @@ export async function createGroup(input: CreateGroupInput): Promise<CreateGroupR
       return {
         doc: {
           code, hostToken, hostMemberId: memberId, host, mode: input.mode, table, note: "",
-          status: GroupStatus.Open, items: [], createdAt: now, updatedAt: now, orderCode: null,
+          status: GroupStatus.Open, items: [], createdAt: now, updatedAt: now, orderCode: null, orderKey: null,
         },
         result: true,
       };
@@ -209,7 +210,7 @@ export async function updateGroup(code: string, input: UpdateGroupInput, caller:
  * Host sends the group to the counter. The group is locked first so nobody can add
  * items while the order is being created; if creating the order fails it is reopened.
  */
-export async function submitGroup(code: string, caller: Caller): Promise<PublicOrder> {
+export async function submitGroup(code: string, caller: Caller): Promise<CreatedOrder> {
   const k = key(normalizeGroupCode(code));
   const current = await readDoc<GroupDoc>(k);
   if (current) await assertCanOrder(current.items.map((i) => i.variantId));
@@ -239,7 +240,7 @@ export async function submitGroup(code: string, caller: Caller): Promise<PublicO
       { customer: `${locked.host} (nhóm)`, mode: locked.mode, table: locked.table, note: locked.note, groupCode: locked.code },
       lines,
     );
-    await updateDoc<GroupDoc, null>(k, (raw) => ({ doc: { ...(raw as GroupDoc), orderCode: order.code }, result: null }));
+    await updateDoc<GroupDoc, null>(k, (raw) => ({ doc: { ...(raw as GroupDoc), orderCode: order.code, orderKey: order.viewKey }, result: null }));
     return order;
   } catch (err) {
     await updateDoc<GroupDoc, null>(k, (raw) => ({ doc: { ...(raw as GroupDoc), status: GroupStatus.Open }, result: null }));

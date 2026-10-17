@@ -13,14 +13,14 @@ import {
   SERVE_MODE_LABEL,
   ServeMode,
 } from "@/lib/constants";
-import { apiJson, getMemberId, groupHeaders, HttpMethod, loadCustomer, saveCustomer } from "@/lib/client";
-import { formatMoney, formatTime } from "@/lib/format";
+import { apiJson, getMemberId, groupHeaders, HttpMethod, loadCustomer, saveCustomer, saveMyOrder, saveMyOrderRef } from "@/lib/client";
+import { dayKey, formatMoney, formatTime } from "@/lib/format";
 import type {
   AddGroupItemInput,
   Menu,
   PublicGroup,
   PublicGroupItem,
-  PublicOrder,
+  CreatedOrder,
   UpdateGroupInput,
   UpdateGroupItemInput,
 } from "@/lib/types";
@@ -156,7 +156,18 @@ export function GroupApp({ code, menu, popularIds }: { code: string; menu: Menu;
       setNote(g.note);
       hostFieldsSynced.current = true;
     }
-    if (g.status === GroupStatus.Submitted && g.orderCode) router.push(ROUTES.order(g.orderCode));
+    if (g.status === GroupStatus.Submitted && g.orderCode && g.orderKey) {
+      // Every member keeps the group order under "Đơn của bạn" on their own phone.
+      saveMyOrderRef({
+        code: g.orderCode,
+        key: g.orderKey,
+        day: dayKey(),
+        at: Date.now(),
+        total: g.total,
+        cups: g.items.reduce((s, i) => s + i.qty, 0),
+      });
+      router.push(ROUTES.order(g.orderCode, g.orderKey));
+    }
   }, [router]);
 
   const load = useCallback(async () => {
@@ -226,8 +237,11 @@ export function GroupApp({ code, menu, popularIds }: { code: string; menu: Menu;
     if (group.mode === ServeMode.Table && !table.trim()) return setError(MESSAGES.needTable);
     setSubmitting(true);
     if (table !== group.table || note !== group.note) await updateGroupFields({ table, note });
-    const order = await call<PublicOrder>(API.groupSubmit(code), HttpMethod.Post);
-    if (order) router.push(ROUTES.order(order.code));
+    const order = await call<CreatedOrder>(API.groupSubmit(code), HttpMethod.Post);
+    if (order) {
+      saveMyOrder(order, dayKey());
+      router.push(ROUTES.order(order.code, order.viewKey));
+    }
     else setSubmitting(false);
   }
 
@@ -264,7 +278,11 @@ export function GroupApp({ code, menu, popularIds }: { code: string; menu: Menu;
       {!isOpen && (
         <div className="status-card">
           <p>{group.orderCode ? `Đơn đã gửi với mã ${group.orderCode}.` : MESSAGES.groupClosed}</p>
-          {group.orderCode ? <Link href={ROUTES.order(group.orderCode)}>Xem trạng thái đơn</Link> : <Link href={ROUTES.home}>Về thực đơn</Link>}
+          {group.orderCode && group.orderKey ? (
+            <Link href={ROUTES.order(group.orderCode, group.orderKey)}>Xem trạng thái đơn</Link>
+          ) : (
+            <Link href={ROUTES.home}>Về thực đơn</Link>
+          )}
         </div>
       )}
 

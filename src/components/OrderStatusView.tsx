@@ -25,7 +25,7 @@ const VIBRATE_PATTERN = [250, 120, 250, 120, 400];
 function headline(o: PublicOrder): string {
   switch (o.status) {
     case OrderStatus.New:
-      return o.ahead ? `Có ${o.ahead} đơn trước bạn` : "Bạn là đơn tiếp theo";
+      return o.isNext ? "Bạn là đơn tiếp theo" : "Quán đã nhận đơn, đang chờ tới lượt";
     case OrderStatus.Making:
       return "Quán đang pha món của bạn";
     case OrderStatus.Ready:
@@ -85,7 +85,7 @@ function PaymentBox({ order, payment }: { order: PublicOrder; payment: PaymentIn
   );
 }
 
-export function OrderStatusView({ code, payment }: { code: string; payment: PaymentInfo | null }) {
+export function OrderStatusView({ code, viewKey, payment }: { code: string; viewKey: string; payment: PaymentInfo | null }) {
   const [order, setOrder] = useState<PublicOrder | null>(null);
   const [missing, setMissing] = useState(false);
   const [notifyState, setNotifyState] = useState<NotificationPermission | "unsupported">("unsupported");
@@ -98,9 +98,10 @@ export function OrderStatusView({ code, payment }: { code: string; payment: Paym
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
+    const startedAt = Date.now();
     const load = async () => {
       try {
-        const res = await fetch(API.orderByCode(code), { cache: "no-store" });
+        const res = await fetch(API.orderByCode(code, viewKey), { cache: "no-store" });
         if (res.status === 404) return alive && setMissing(true);
         if (res.ok && alive) {
           const data = (await res.json()) as PublicOrder;
@@ -112,14 +113,15 @@ export function OrderStatusView({ code, payment }: { code: string; payment: Paym
       } catch {
         /* retry */
       }
-      if (alive) timer = setTimeout(load, POLL_MS.orderStatus);
+      const slow = Date.now() - startedAt > POLL_MS.orderStatusSlowAfterMs || document.visibilityState !== "visible";
+      if (alive) timer = setTimeout(load, slow ? POLL_MS.orderStatusSlow : POLL_MS.orderStatus);
     };
     load();
     return () => {
       alive = false;
       clearTimeout(timer);
     };
-  }, [code]);
+  }, [code, viewKey]);
 
   async function askNotify() {
     try {

@@ -46,6 +46,8 @@ export interface CreateOrderLineInput {
 }
 
 export interface CreateOrderInput {
+  /** Same id on retries of one checkout so a double tap never makes two orders. */
+  requestId?: string;
   customer: string;
   mode: ServeMode;
   table?: string;
@@ -85,6 +87,9 @@ export interface Order {
   kiotvietError: string | null;
   groupCode?: string;
   paid?: boolean;
+  /** Secret part of the customer's order link; without it the order cannot be looked up. */
+  viewKey?: string;
+  requestId?: string;
 }
 
 /** Public view of an order (no admin-only fields). */
@@ -97,20 +102,46 @@ export interface PublicOrder {
   total: number;
   status: OrderStatus;
   createdAt: number;
-  ahead: number;
+  /** True when no earlier order is still waiting (no shop-wide counts are exposed). */
+  isNext: boolean;
   /** Rough minutes until this order is ready (0 once it is). */
   waitMinutes: number;
   groupCode?: string;
   paid: boolean;
 }
 
-export interface OrderStats {
-  waiting: number;
-  making: number;
-  today: number;
+/** What every visitor may see about the shop: no order counts, nobody else's orders. */
+export interface StorefrontStatus {
   waitMinutes: number;
   acceptingOrders: boolean;
   soldOut: string[];
+}
+
+/** Returned once, to whoever placed the order. */
+export interface CreatedOrder extends PublicOrder {
+  viewKey: string;
+}
+
+export interface MyOrderLookup {
+  code: string;
+  key: string;
+  day: string;
+}
+
+export interface MyOrderStatus {
+  code: string;
+  status: OrderStatus;
+  paid: boolean;
+}
+
+/** Saved on this device so the customer can reopen their own orders. */
+export interface MyOrderRef {
+  code: string;
+  key: string;
+  day: string;
+  at: number;
+  total: number;
+  cups: number;
 }
 
 export interface ShopSettings {
@@ -171,6 +202,7 @@ export interface GroupDoc {
   createdAt: number;
   updatedAt: number;
   orderCode: string | null;
+  orderKey?: string | null;
 }
 
 /** What the group page receives: no tokens or other members' ids. */
@@ -190,6 +222,8 @@ export interface PublicGroup {
   createdAt: number;
   expiresAt: number;
   orderCode: string | null;
+  /** Shared with group members so everyone can follow the order. */
+  orderKey: string | null;
   isHost: boolean;
 }
 

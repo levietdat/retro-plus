@@ -5,9 +5,11 @@ import {
   STORAGE_KEY_CUSTOMER,
   STORAGE_KEY_HOST_TOKEN,
   STORAGE_KEY_LAST_ORDER,
+  MY_ORDERS_MAX,
   STORAGE_KEY_MEMBER_ID,
+  STORAGE_KEY_MY_ORDERS,
 } from "./constants";
-import type { ApiError } from "./types";
+import type { ApiError, CreatedOrder, DrinkOptions, MyOrderRef } from "./types";
 
 export interface SavedCustomer {
   customer: string;
@@ -30,16 +32,19 @@ function safeSet(key: string, value: string) {
   }
 }
 
+const randomHex = (bytes: number) =>
+  Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (b) => b.toString(16).padStart(2, "0")).join("");
+
+/** One id per checkout attempt; the server returns the same order if it sees it twice. */
+export const newRequestId = () => randomHex(12);
+
 let memoryMemberId = "";
 
 /** Random id for this browser, so a person can edit only their own drinks in a group. */
 export function getMemberId(): string {
   const saved = safeGet(STORAGE_KEY_MEMBER_ID);
   if (saved) return saved;
-  if (!memoryMemberId) {
-    const bytes = crypto.getRandomValues(new Uint8Array(12));
-    memoryMemberId = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  }
+  if (!memoryMemberId) memoryMemberId = randomHex(12);
   safeSet(STORAGE_KEY_MEMBER_ID, memoryMemberId);
   return memoryMemberId;
 }
@@ -91,7 +96,7 @@ export async function apiJson<T>(url: string, method: HttpMethod, body?: unknown
 export interface StoredLine {
   variantId: string;
   qty: number;
-  options?: import("./types").DrinkOptions;
+  options?: DrinkOptions;
   note?: string;
 }
 
@@ -111,4 +116,30 @@ export function loadLastOrder(): StoredLastOrder | null {
 
 export function saveLastOrder(lines: StoredLine[]) {
   safeSet(STORAGE_KEY_LAST_ORDER, JSON.stringify({ at: Date.now(), lines } satisfies StoredLastOrder));
+}
+
+/* ---------- This device's own orders (the only orders a customer can see) ---------- */
+export function loadMyOrders(today: string): MyOrderRef[] {
+  try {
+    const all = JSON.parse(safeGet(STORAGE_KEY_MY_ORDERS) || "[]") as MyOrderRef[];
+    return all.filter((o) => o.day === today);
+  } catch {
+    return [];
+  }
+}
+
+export function saveMyOrderRef(ref: MyOrderRef) {
+  const rest = loadMyOrders(ref.day).filter((o) => o.code !== ref.code);
+  safeSet(STORAGE_KEY_MY_ORDERS, JSON.stringify([ref, ...rest].slice(0, MY_ORDERS_MAX)));
+}
+
+export function saveMyOrder(order: CreatedOrder, day: string) {
+  saveMyOrderRef({
+    code: order.code,
+    key: order.viewKey,
+    day,
+    at: order.createdAt,
+    total: order.total,
+    cups: order.lines.reduce((s, l) => s + l.qty, 0),
+  });
 }

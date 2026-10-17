@@ -1,20 +1,22 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { API, LIMITS, MESSAGES, ROUTES, SERVE_MODE_LABEL, ServeMode } from "@/lib/constants";
 import {
   apiJson,
   HttpMethod,
   loadCustomer,
   loadLastOrder,
+  newRequestId,
   saveCustomer,
   saveLastOrder,
+  saveMyOrder,
   type StoredLastOrder,
 } from "@/lib/client";
 import { findVariantClient } from "@/lib/menu-client";
-import { formatMoney } from "@/lib/format";
+import { dayKey, formatMoney } from "@/lib/format";
 import { describeOptions, optionsKey } from "@/lib/options";
-import type { CreateOrderInput, DrinkOptions, Menu, MenuItem, MenuVariant, PublicOrder } from "@/lib/types";
+import type { CreatedOrder, CreateOrderInput, DrinkOptions, Menu, MenuItem, MenuVariant } from "@/lib/types";
 import type { ItemChoice } from "./ItemSheet";
 import { LineLabel } from "./LineLabel";
 import { MenuBrowser } from "./MenuBrowser";
@@ -45,6 +47,7 @@ export function OrderApp({ menu, popularIds }: { menu: Menu; popularIds: string[
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
   const [last, setLast] = useState<StoredLastOrder | null>(null);
+  const requestId = useRef("");
 
   useEffect(() => {
     const saved = loadCustomer();
@@ -55,6 +58,11 @@ export function OrderApp({ menu, popularIds }: { menu: Menu; popularIds: string[
     if (fromQr) setTable(fromQr.slice(0, LIMITS.table));
     setLast(loadLastOrder());
   }, []);
+
+  // A new cart is a new checkout; retries of the same cart reuse the id.
+  useEffect(() => {
+    requestId.current = newRequestId();
+  }, [cart]);
 
   const lines = [...cart.values()];
   const count = lines.reduce((s, l) => s + l.qty, 0);
@@ -107,6 +115,7 @@ export function OrderApp({ menu, popularIds }: { menu: Menu; popularIds: string[
     setSending(true);
     setError("");
     const body: CreateOrderInput = {
+      requestId: requestId.current,
       customer,
       mode,
       table,
@@ -114,10 +123,11 @@ export function OrderApp({ menu, popularIds }: { menu: Menu; popularIds: string[
       lines: lines.map((l) => ({ variantId: l.variant.id, qty: l.qty, options: l.options, note: l.note })),
     };
     try {
-      const order = await apiJson<PublicOrder>(API.orders, HttpMethod.Post, body);
+      const order = await apiJson<CreatedOrder>(API.orders, HttpMethod.Post, body);
+      saveMyOrder(order, dayKey());
       saveCustomer({ customer, table });
       saveLastOrder(body.lines.map(({ variantId, qty, options, note: n }) => ({ variantId, qty, options: options as DrinkOptions | undefined, note: n })));
-      router.push(ROUTES.order(order.code));
+      router.push(ROUTES.order(order.code, order.viewKey));
     } catch (e) {
       setError((e as Error).message || MESSAGES.sendFail);
       setSending(false);

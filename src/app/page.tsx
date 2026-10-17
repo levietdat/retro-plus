@@ -4,7 +4,10 @@ import { OrderApp } from "@/components/OrderApp";
 import { getMenu } from "@/lib/menu";
 import { getPopularItemIds } from "@/lib/orders";
 
-export const dynamic = "force-dynamic";
+// Same HTML for every visitor (personal bits load in the browser), so serve it from the CDN
+// and rebuild every few minutes. Faster first paint after scanning the table QR.
+// Next.js needs a literal here (seconds).
+export const revalidate = 300;
 
 export default async function HomePage() {
   const menu = await getMenu();
